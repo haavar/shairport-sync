@@ -408,6 +408,7 @@ typedef struct {
   uint8_t airplay_pk[32];  // public key
   char *pk_string;
   char *nqptp_shared_memory_interface_name; // client name for nqptp service
+  char *nqptp_control_address; // local address to reach nqptp's control port on; "localhost" if NULL
   int enable_HK_Access_Control;             // true if the device is part of an Apple Home
   unsigned int volumeControlType; // may be associated with different volume control arrangements
 #endif

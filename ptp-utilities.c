@@ -233,11 +233,18 @@ void ptp_send_control_message_string(const char *msg) {
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE;
 
-    /* nqptp is only controllable via localhost */
+    /* nqptp's control port is reached on localhost by default. When several
+       instances share one network namespace, each can point at its own nqptp
+       via a distinct loopback address (e.g. 127.0.0.2) so the control ports do
+       not collide -- still loopback-only, so not exposed on the LAN. */
     char portstr[20];
     snprintf(portstr, 20, "%d", NQPTP_CONTROL_PORT);
 
-    ret = getaddrinfo("localhost", portstr, &hints, &info);
+    const char *nqptp_control_node =
+        (config.nqptp_control_address && config.nqptp_control_address[0])
+            ? config.nqptp_control_address
+            : "localhost";
+    ret = getaddrinfo(nqptp_control_node, portstr, &hints, &info);
     if (ret) {
       die("getaddrinfo: %s", gai_strerror(ret));
     }

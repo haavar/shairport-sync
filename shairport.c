@@ -414,6 +414,9 @@ int parse_options(int argc, char **argv) {
       {"displayConfig", 'X', POPT_ARG_NONE, &display_config_selected, 0, NULL, NULL},
       {"port", 'p', POPT_ARG_INT, &config.port, 0, NULL, NULL},
       {"address", 0, POPT_ARG_STRING, &config.address, 0, NULL, NULL},
+#ifdef CONFIG_AIRPLAY_2
+      {"nqptp-control-address", 0, POPT_ARG_STRING, &config.nqptp_control_address, 0, NULL, NULL},
+#endif
       {"name", 'a', POPT_ARG_STRING, &raw_service_name, 0, NULL, NULL},
       {"output", 'o', POPT_ARG_STRING, &config.output_name, 0, NULL, NULL},
       {"on-start", 'B', POPT_ARG_STRING, &config.cmd_start, 0, NULL, NULL},
@@ -693,6 +696,14 @@ int parse_options(int argc, char **argv) {
          overrides this, mirroring general.port / -p. */
       if (config_lookup_string(config.cfg, "general.address", &str))
         config.address = strdup(str);
+
+#ifdef CONFIG_AIRPLAY_2
+      /* Local address to reach nqptp's control port on (default "localhost").
+         Lets multiple instances in one netns each target their own nqptp via a
+         distinct loopback address. CLI --nqptp-control-address overrides this. */
+      if (config_lookup_string(config.cfg, "general.nqptp_control_address", &str))
+        config.nqptp_control_address = strdup(str);
+#endif
 
       /* Get the udp port base setting. */
       if (config_lookup_int(config.cfg, "general.udp_port_base", &value)) {
