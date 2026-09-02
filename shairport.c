@@ -1741,6 +1741,30 @@ int parse_options(int argc, char **argv) {
             config.nqptp_shared_memory_interface_name);
     }
   }
+  // If no name was set explicitly but a specific --address is in use, derive a
+  // per-instance name from the address, so several AirPlay 2 instances on one host
+  // each get their own nqptp clock with no extra configuration. nqptp learns the
+  // name from the control message it is sent, so nothing has to match on the nqptp
+  // side. e.g. 192.168.1.118 -> "/nqptp-192-168-1-118" (a valid POSIX shm name:
+  // begins with "/", no interior "/", <= 63 characters).
+  if ((config.nqptp_shared_memory_interface_name == NULL) && (config.address != NULL) &&
+      (config.address[0] != '\0') && (strchr(config.address, '/') == NULL) &&
+      (strlen("/nqptp-") + strlen(config.address) <= 63)) {
+    char *derived = malloc(strlen("/nqptp-") + strlen(config.address) + 1);
+    if (derived != NULL) {
+      char *w = derived;
+      const char *r;
+      for (r = "/nqptp-"; *r != '\0'; r++)
+        *w++ = *r;
+      for (r = config.address; *r != '\0'; r++)
+        *w++ = ((*r == '.') || (*r == ':')) ? '-' : *r; // '.'/':' -> '-' (no interior '/')
+      *w = '\0';
+      config.nqptp_shared_memory_interface_name = derived;
+      debug(1, "nqptp shared memory interface name derived from address: \"%s\".",
+            config.nqptp_shared_memory_interface_name);
+    }
+  }
+
   if (config.nqptp_shared_memory_interface_name == NULL)
     config.nqptp_shared_memory_interface_name = strdup(NQPTP_INTERFACE_NAME);
 
@@ -2611,7 +2635,30 @@ int main(int argc, char **argv) {
 
   config.service_type = APST_auto; // this may be changed by the settings...
 
-  // get a device id -- the first non-local MAC address
+  // Peek at --address before computing the device id: when an instance is bound to
+  // a specific address, its device id is taken from that interface's MAC (see
+  // get_device_id) rather than the first non-loopback one, so several instances on
+  // one host are distinct from --address alone. parse_options() below sets
+  // config.address authoritatively; this only makes it available this early. Stop
+  // at "--", after which arguments belong to the audio backend.
+  {
+    int ai;
+    for (ai = 1; (ai < argc) && (strcmp(argv[ai], "--") != 0); ai++) {
+      const char *av = NULL;
+      if (strncmp(argv[ai], "--address=", 10) == 0)
+        av = argv[ai] + 10;
+      else if ((strcmp(argv[ai], "--address") == 0) && (ai + 1 < argc))
+        av = argv[ai + 1];
+      if (av != NULL) {
+        if (config.address != NULL)
+          free(config.address);
+        config.address = strdup(av);
+      }
+    }
+  }
+
+  // get a device id -- the MAC address of the --address interface, or else the
+  // first non-local MAC address
   get_device_id((uint8_t *)&config.hw_addr, 6);
 
   // get the endianness
