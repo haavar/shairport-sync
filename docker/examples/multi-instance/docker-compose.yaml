@@ -1,0 +1,45 @@
+# Example: several AirPlay 2 instances in ONE network namespace, sharing ONE nqptp.
+#
+# This is the "multiple instances on one host" pattern. It needs an image built
+# from this branch (shairport-sync with --address and the device-id / nqptp
+# shared-memory-name derivations) together with an nqptp that has multi-client
+# support (mikebrady/nqptp#50). See README.md for the build.
+#
+# The only per-instance settings are on the command line. --address alone drives
+# each instance's RTSP bind, its Avahi advertisement scope + host-name, its
+# AirPlay 2 device id, and its nqptp shared-memory name -- so every instance
+# shares one config file (shairport-sync.conf).
+name: shairport-multi
+
+x-room: &room
+  image: shairport-sync-multi:latest      # built from this branch + nqptp#50 (see README.md)
+  network_mode: "host"                     # all instances + nqptp share one netns (localhost, PTP)
+  ipc: "service:nqptp"                     # share the sidecar's /dev/shm to read its nqptp clock
+  depends_on: [nqptp]
+  entrypoint: ["/run.sh"]                  # scopes Avahi to --address, then starts shairport-sync
+  devices:
+    - /dev/snd:/dev/snd                    # ALSA output (adjust/remove for other backends)
+  group_add: ["audio"]
+  restart: unless-stopped
+  volumes:
+    - ./shairport-sync.conf:/etc/shairport-sync.conf   # ONE shared config for every instance
+    - ./run.sh:/run.sh:ro
+
+services:
+  # One nqptp for the whole namespace. It binds 319/320 once and keeps a separate
+  # clock per instance, keyed by the shared-memory name each instance sends -- so
+  # no per-instance IP or control port is needed. Requires nqptp#50.
+  nqptp:
+    image: shairport-sync-multi:latest
+    network_mode: "host"
+    ipc: "shareable"                       # owns the IPC namespace the rooms join
+    entrypoint: ["/usr/local/bin/nqptp"]
+    restart: unless-stopped
+
+  living-room:
+    <<: *room
+    command: ["--address=192.0.2.11", "--name=Living Room", "--", "-d", "hw:0"]
+
+  kitchen:
+    <<: *room
+    command: ["--address=192.0.2.12", "--name=Kitchen", "--", "-d", "hw:1"]
